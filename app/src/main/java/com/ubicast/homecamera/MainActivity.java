@@ -6,10 +6,13 @@ import android.content.pm.PackageManager;
 import android.graphics.Camera;
 import android.media.MediaRecorder;
 import android.os.Environment;
+import android.os.ParcelFileDescriptor;
+import android.os.StrictMode;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -18,8 +21,10 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.Socket;
 
-public class MainActivity extends AppCompatActivity implements View.OnClickListener, SurfaceHolder.Callback {
+public class MainActivity extends AppCompatActivity implements View.OnClickListener, SurfaceHolder.Callback, MediaRecorder.OnInfoListener {
 
     private SurfaceView surfaceView;
     boolean isRecord = false;
@@ -27,6 +32,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Button startBtn;// 開始錄製按鈕
     private Button stopBtn;// 停止錄製按鈕
     private SurfaceView surfaceview;// 顯示視頻的控制項
+    public Socket socket;
     public MediaRecorder mediaRecorder;
     // 用來顯示視頻的一個介面，我靠不用還不行，也就是說用mediarecorder錄製視頻還得給個介面看
     // 想偷偷錄視頻的同學可以考慮別的辦法。。嗯需要實現這個介面的Callback介面
@@ -39,6 +45,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
 
         //if(!checkPermisson()){
        //     Toast.makeText(this,"Permission not accept", Toast.LENGTH_LONG).show();
@@ -63,11 +70,23 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             Toast.makeText(this, "Fail", Toast.LENGTH_LONG).show();
         }
 */
+        if (android.os.Build.VERSION.SDK_INT > 9) {
+            StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build(); StrictMode.setThreadPolicy(policy);
+        }
         init(new MediaRecorder());
 
     }
 
     private void init(MediaRecorder mediaRecorder ){
+
+        try {
+            InetAddress serverIp = InetAddress.getByName("192.168.100.154");
+            socket = new Socket(serverIp, 8811);
+            Log.d("Connect...","Connect to 192.168.100.154", null);
+        } catch (IOException e) {
+            e.printStackTrace();
+
+        }
 
         startBtn = (Button) this.findViewById(R.id.startBtn);
         stopBtn = (Button) this.findViewById(R.id.stopBtn);
@@ -125,23 +144,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View v) {
         switch (v.getId()){
             case R.id.startBtn:
-                mediaRecorder = new MediaRecorder();// 創建mediarecorder物件
-                // 設置錄製視頻源為Camera(相機)
-                mediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
-                // 設置錄製完成後視頻的封裝格式THREE_GPP為3gp.MPEG_4為mp4
-                mediaRecorder
-                        .setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-                // 設置錄製的視頻編碼h263 h264
-                mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
-                // 設置視頻錄製的解析度。必須放在設置編碼和格式的後面，否則報錯
-                //mediaRecorder.setVideoSize(176, 144); //加了會StartFail：-19
-                // 設置錄製的視頻幀率。必須放在設置編碼和格式的後面，否則報錯
-                //mediaRecorder.setVideoFrameRate(20);//加了會StartFail：-19
-                mediaRecorder.setPreviewDisplay(surfaceHolder.getSurface());
-                // 設置視頻檔輸出的路徑
-                //mediaRecorder.setOutputFile("/sdcard/love.mp4");
-                File videoFile = new File(Environment.getExternalStorageDirectory(), System.currentTimeMillis() + ".mp4");
-                mediaRecorder.setOutputFile(videoFile.getPath());
+                mediaRecorder = initMediaRecorder();
                 Toast.makeText(this,"Start Record", Toast.LENGTH_LONG).show();
                 try {
                     // 準備錄製
@@ -166,6 +169,48 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 }
                 break;
         }
+    }
+
+    public MediaRecorder initMediaRecorder(){
+
+        MediaRecorder mediaRecorder = new MediaRecorder();// 創建mediarecorder物件
+        // 設置錄製視頻源為Camera(相機)
+        mediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
+        // 設置錄製完成後視頻的封裝格式THREE_GPP為3gp.MPEG_4為mp4
+        mediaRecorder
+                .setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+        // 設置錄製的視頻編碼h263 h264
+        mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
+        //录像旋转90度
+        mediaRecorder.setOrientationHint(90);
+        mediaRecorder.setVideoEncodingBitRate(1024*1024*1024);//清晰     512*1024(不清楚)
+        //mediaRecorder.setVideoEncodingBitRate(900*1024); //较为清晰，且文件大小为3.26M(30秒)
+        // 設置視頻錄製的解析度。必須放在設置編碼和格式的後面，否則報錯
+        mediaRecorder.setVideoSize(320, 240); //加了會StartFail：-19
+        // 設置錄製的視頻幀率。必須放在設置編碼和格式的後面，否則報錯
+        //mediaRecorder.setVideoFrameRate(20);//加了會StartFail：-19
+        mediaRecorder.setPreviewDisplay(surfaceHolder.getSurface());
+        // 設置視頻檔輸出的路徑
+        //mediaRecorder.setOutputFile("/sdcard/love.mp4");
+        // this is your network socket
+        //ParcelFileDescriptor pfd = ParcelFileDescriptor.fromSocket(socket);
+        File videoFile = new File(Environment.getExternalStorageDirectory(), System.currentTimeMillis() + ".mp4");
+        mediaRecorder.setOutputFile(videoFile.getPath());
+
+        //mediaRecorder.setOutputFile(pfd.getFileDescriptor());
+
+        /*
+        // this is your network socket, connected to the server
+        ParcelFileDescriptor pfd = ParcelFileDescriptor.fromSocket(socket);
+        mMediaPlayer = new MediaPlayer();
+        mMediaPlayer.setDataSource(pfd.getFileDescriptor());
+        mMediaPlayer.prepare();
+        mMediaPlayer.start();
+        */
+
+        mediaRecorder.setMaxDuration(10000); // 10 seconds
+        mediaRecorder.setOnInfoListener(this);
+        return mediaRecorder;
     }
 
     private boolean checkPermisson(){
@@ -206,5 +251,30 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         surfaceview = null;
         surfaceHolder = null;
         mediaRecorder = null;
+    }
+
+    /**
+     * @param mediaRecorder
+     * @param what
+     * @param extra
+     */
+    @Override
+    public void onInfo(MediaRecorder mediaRecorder, int what, int extra) {
+        if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+            mediaRecorder.stop();
+            mediaRecorder.reset();
+            mediaRecorder = initMediaRecorder();
+            try {
+                mediaRecorder.prepare();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            mediaRecorder.start();
+        }
+    }
+
+    @Override
+    public void onPointerCaptureChanged(boolean hasCapture) {
+
     }
 }
